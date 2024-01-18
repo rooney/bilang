@@ -56,7 +56,6 @@
    [#\]        token-RBRACKET]
    [#\.        (token 'DOT       '|.|)]
    [#\:        (token 'COLON     '|:|)]
-   [#\;        (token 'SEMICOLON '|;|)]
    [#\,        (token 'COMMA     '|,|)]
    [(eof) (if (> _level 0)
               (dedent-to! 0) 
