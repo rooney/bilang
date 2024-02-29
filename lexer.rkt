@@ -3,7 +3,7 @@
 
 (define-lex-abbrevs
   (prime?     (:* #\'))
-  (dashes     (:+ #\-))
+  (dash       (:+ #\-))
   (alphas     (:+ (:/ #\a #\z #\A #\Z)))
   (alnums?    (:* (:/ #\a #\z #\A #\Z #\0 #\9)))
   (alnums     (:+ (:/ #\a #\z #\A #\Z #\0 #\9)))
@@ -18,7 +18,7 @@
   (tickdent   (:seq #\` dent))
   (integer    (:seq digits (:* (:seq #\_ digits))))
   (decimal    (:seq integer #\. integer))
-  (identifier (:seq alphas alnums? (:* (:seq (:or #\+ #\- "--") alnums prime?))))
+  (identifier (:seq alphas alnums? (:* (:seq (char-set "+/-") alnums prime?))))
   (unit       (:seq alphas prime?))
   (op         (:seq symbols prime?))
   (question   (:seq (:+ #\?) prime?)))
@@ -55,18 +55,6 @@
 
 (define-macro (main-lexer RULES ...)
   #'(base-lexer RULES ...
-                [question   (token 'QUESTION     (string->symbol lexeme))]
-                [op         (token 'OP           (string->symbol lexeme))]
-                [dashes     (token 'DASH         (string->symbol lexeme))]
-                [identifier (token 'IDENTIFIER   (string->symbol lexeme))]
-                [integer    (token 'INTEGER      (string->number lexeme))]
-                [decimal    (token 'DECIMAL      (string->number lexeme))]
-                [#\"        (mode!-quote 'DQUOTE #\" stringer-I)]
-                [#\'        (mode!-quote 'SQUOTE #\' stringer)]
-                [#\`        (mode! grave-span        (token 'GRAVE))]
-                [tickspace  (mode! grave-line        (token 'GRAVE))]
-                [tickdent   (mode! grave-block (cons (token 'GRAVE)
-                                                     (indent/dedent/newline (substring lexeme 1))))]
                 ["{," (list (token 'LBRACE   #\{) (token 'IT))]
                 [#\{        (token 'LBRACE   #\{)]
                 [#\}        (token 'RBRACE   #\})]
@@ -75,10 +63,23 @@
                 [#\[        (token 'LBRACKET #\[)]
                 [#\]        (token 'RBRACKET #\])]
                 [#\$        (token 'DOLLAR   #\$)]
+                [#\+        (token 'PLUS     #\+)]
                 [#\/        (token 'SLASH    #\/)]
                 [#\:        (token 'COLON    #\:)]
                 [#\,        (token 'COMMA    #\,)]
                 [#\.        (token 'DOT      #\.)]
+                [question   (token 'QUESTION   (string->symbol lexeme))]
+                [dash       (token 'DASH       (string->symbol lexeme))]
+                [op         (token 'OP         (string->symbol lexeme))]
+                [identifier (token 'IDENTIFIER (string->symbol lexeme))]
+                [integer    (token 'INTEGER    (string->number lexeme))]
+                [decimal    (token 'DECIMAL    (string->number lexeme))]
+                [#\"        (mode!-quote 'DQUOTE #\" stringer-I)]
+                [#\'        (mode!-quote 'SQUOTE #\' stringer)]
+                [#\`        (mode! grave-span        (token 'GRAVE))]
+                [tickspace  (mode! grave-line        (token 'GRAVE))]
+                [tickdent   (mode! grave-block (cons (token 'GRAVE)
+                                                     (indent/dedent/newline (substring lexeme 1))))]
                 [spacetabs  (unless-eof (token 'SPACE))]
                 [dentspace  (unless-eof (stock 'WANT-TABS #\space end-pos -1))]))
 
