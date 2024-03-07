@@ -2,8 +2,6 @@
 (require brag/support)
 
 (define-lex-abbrevs
-  (prime?     (:* #\'))
-  (dash       (:+ #\-))
   (alphas     (:+ (:/ #\a #\z #\A #\Z)))
   (alnums?    (:* (:/ #\a #\z #\A #\Z #\0 #\9)))
   (alnums     (:+ (:/ #\a #\z #\A #\Z #\0 #\9)))
@@ -16,12 +14,12 @@
   (dentspace  (:seq dent #\space))
   (tickspace  (:seq #\` spacetabs))
   (tickdent   (:seq #\` dent))
+  (identifier (:seq alphas alnums? (:* (:seq (char-set "+/-") alnums))))
   (integer    (:seq digits (:* (:seq #\_ digits))))
   (decimal    (:seq integer #\. integer))
-  (identifier (:seq alphas alnums? (:* (:seq (char-set "+/-") alnums prime?))))
-  (unit       (:seq alphas prime?))
-  (op         (:seq symbols prime?))
-  (question   (:seq (:+ #\?) prime?)))
+  (int-qty    (:seq integer alphas))
+  (dec-qty    (:seq decimal alphas))
+  (prime      (:>= 2 #\')))
 
 (define-macro-cases indent/dedent/newline
   [(indent/dedent/newline)                       #'(indent/dedent/newline lexeme on-indent: _lexer)]
@@ -64,34 +62,39 @@
                 [#\]        (token 'RBRACKET #\])]
                 [#\$        (token 'DOLLAR   #\$)]
                 [#\+        (token 'PLUS     #\+)]
+                [#\-        (token 'DASH     #\-)]
                 [#\/        (token 'SLASH    #\/)]
                 [#\:        (token 'COLON    #\:)]
-                [#\,        (token 'COMMA    #\,)]
                 [#\.        (token 'DOT      #\.)]
-                [question   (token 'QUESTION   (string->symbol lexeme))]
-                [dash       (token 'DASH       (string->symbol lexeme))]
-                [op         (token 'OP         (string->symbol lexeme))]
+                [#\,        (token 'COMMA    #\,)]
+                [#\?        (token 'QUESTION #\?)]
+                [symbols    (token 'OP         (string->symbol lexeme))]
                 [identifier (token 'IDENTIFIER (string->symbol lexeme))]
                 [integer    (token 'INTEGER    (string->number lexeme))]
                 [decimal    (token 'DECIMAL    (string->number lexeme))]
+                [prime      (token 'PRIME      (string->symbol lexeme))]
+                [#\'        (if (is-after '(ID IDENTIFIER DOLLAR PLUS DASH SLASH QUESTION))
+                                (token 'PRIME  #\')
+                                (mode!-quote 'SQUOTE #\' stringer))]
                 [#\"        (mode!-quote 'DQUOTE #\" stringer-I)]
-                [#\'        (mode!-quote 'SQUOTE #\' stringer)]
                 [#\`        (mode! grave-span        (token 'GRAVE))]
                 [tickspace  (mode! grave-line        (token 'GRAVE))]
                 [tickdent   (mode! grave-block (cons (token 'GRAVE)
                                                      (indent/dedent/newline (substring lexeme 1))))]
+                [dentspace  (unless-eof (stock 'WANT-TABS #\space end-pos -1))]
                 [spacetabs  (unless-eof (token 'SPACE))]
-                [dentspace  (unless-eof (stock 'WANT-TABS #\space end-pos -1))]))
+                [int-qty    (qty 'INTEGER)]
+                [dec-qty    (qty 'DECIMAL)]))
 
 (define (interper)
   (let ([prev-lexer _lexer]
         [braces 0])
     (main-lexer [#\{ (begin (update! braces add1)
-                            (token 'LBRACE "{"))]
+                            (token 'LBRACE #\{))]
                 [#\} (begin (if (> braces 0)
                                 (update! braces sub1)
                                 (mode! prev-lexer))
-                            (token 'RBRACE "}"))])))
+                            (token 'RBRACE #\}))])))
 
 (define-macro (stringer (SPECIAL-CHARS ...) RULES ...)
   #'(base-lexer RULES ...
@@ -175,6 +178,12 @@
 
 (define-macro (update! COUNTER FN)
   #'(set! COUNTER (FN COUNTER)))
+
+(define-macro (qty SYMBOL)
+  #'(let* ([numpart (list->string (takef (string->list lexeme) char-numeric?))]
+           [idpart (substring lexeme (string-length numpart))])
+      (list (token SYMBOL (string->number numpart))
+            (token 'IDENTIFIER (string->symbol idpart)))))
 
 (define (debug msg x)
   (display msg)

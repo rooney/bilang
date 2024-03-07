@@ -54,10 +54,11 @@ apply0 :  expr0 (group|dot|slash|op)+
 @e     :      int|dec|id|string
        |      group
 
-id     : IDENTIFIER QUESTION?
+
 int    : INTEGER
 dec    : DECIMAL
-op     : OP|DOLLAR|SLASH|DASH
+id     : (DASH? DASH?|PLUS?) IDENTIFIER QUESTION? PRIME?
+op     : (OP|DOLLAR|PLUS|SLASH|DASH|QUESTION) PRIME?
 rad    : op | anion | LPAREN RPAREN | LBRACE RBRACE
 key    : @op | @id
 slash  : /SLASH @id
@@ -66,7 +67,7 @@ atom   : (@key COLON?)? anion | kv
 kv     : @key /COLON        exprO
 kvI    : @key /COLON /SPACE exprI
 kv2    : @key /COLON /SPACE expr2
-       | @key /COLON @indent
+       | @key /COLON block
 ion    :      /COLON @key
 anion  :      /COLON
 it     : /IT
@@ -74,12 +75,12 @@ it     : /IT
 newline : NEWLINE
 string : /DQUOTE (si|sz)* /UNQUOTE
        | /DQUOTE @sb /NEWLINE /UNQUOTE
-sb     : /INDENT (STRING|interp|newline|sb)* /DEDENT
-interp : /INTERP (@braces|@indent)
+sb     : @indent (STRING|interp|newline|sb)* /DEDENT
+interp : /INTERP (@braces|block)
 @s1    :          STRING*
-@s2    : /INDENT  STRING*        /DEDENT
+@s2    : @indent  STRING*        /DEDENT
 @si    :          (STRING|interp)*
-@sz    : /INDENT  (STRING|interp)* /DEDENT
+@sz    : @indent  (STRING|interp)* /DEDENT
 @se    : /NEWLINE (STRING|interp)*
 
 @group   : parens|braces|brackets
@@ -89,12 +90,13 @@ brackets : /LBRACKET array? /RBRACKET
 @kwargs  : (/SPACE kv)+
 @space1  :  /SPACE (kv|expr1)
 @spaceI  :  /SPACE (kv|kvI|applyI)
-@space2  :  /SPACE (   kv2|apply2) | @indent
-@subexpr :  /SPACE? exprI          | @indent /NEWLINE
-@array   :  /SPACE  exprI                        (/NEWLINE /COMMA  /SPACE exprI)*          /SPACE
-         |          exprO (/SPACE exprO)*        (/NEWLINE  exprO (/SPACE exprO)*)*
-         | /INDENT /COMMA (/SPACE exprI|@indent) (/NEWLINE /COMMA (/SPACE exprI|@indent))* /DEDENT /NEWLINE
-indent   : /INDENT @expres /DEDENT
+@space2  :  /SPACE (   kv2|apply2) | block
+@subexpr :  /SPACE? exprI          | block /NEWLINE
+@array   :  /SPACE  exprI                      (/NEWLINE /COMMA  /SPACE exprI)*        /SPACE
+         |          exprO (/SPACE exprO)*      (/NEWLINE  exprO (/SPACE exprO)*)*
+         | @indent /COMMA (/SPACE exprI|block) (/NEWLINE /COMMA (/SPACE exprI|block))* /DEDENT /NEWLINE
+@block   : @indent @expres /DEDENT
+@indent  : /NEWLINE /INDENT
 
 error : UNKNOWN-TOKEN
       | WANT-TABS
