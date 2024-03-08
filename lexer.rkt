@@ -2,6 +2,8 @@
 (require brag/support)
 
 (define-lex-abbrevs
+  (dashes     (:+ #\-))
+  (primes     (:+ #\'))
   (alphas     (:+ (:/ #\a #\z #\A #\Z)))
   (alnums?    (:* (:/ #\a #\z #\A #\Z #\0 #\9)))
   (alnums     (:+ (:/ #\a #\z #\A #\Z #\0 #\9)))
@@ -18,8 +20,7 @@
   (integer    (:seq digits (:* (:seq #\_ digits))))
   (decimal    (:seq integer #\. integer))
   (int-qty    (:seq integer alphas))
-  (dec-qty    (:seq decimal alphas))
-  (prime      (:>= 2 #\')))
+  (dec-qty    (:seq decimal alphas)))
 
 (define-macro-cases indent/dedent/newline
   [(indent/dedent/newline)                       #'(indent/dedent/newline lexeme on-indent: _lexer)]
@@ -53,35 +54,34 @@
 
 (define-macro (main-lexer RULES ...)
   #'(base-lexer RULES ...
-                ["{," (list (token 'LBRACE   #\{) (token 'IT))]
-                [#\{        (token 'LBRACE   #\{)]
-                [#\}        (token 'RBRACE   #\})]
-                [#\(        (token 'LPAREN   #\()]
-                [#\)        (token 'RPAREN   #\))]
-                [#\[        (token 'LBRACKET #\[)]
-                [#\]        (token 'RBRACKET #\])]
-                [#\$        (token 'DOLLAR   #\$)]
-                [#\+        (token 'PLUS     #\+)]
-                [#\-        (token 'DASH     #\-)]
-                [#\/        (token 'SLASH    #\/)]
-                [#\:        (token 'COLON    #\:)]
-                [#\.        (token 'DOT      #\.)]
-                [#\,        (token 'COMMA    #\,)]
-                [#\?        (token 'QUESTION #\?)]
+                ["{," (list (token 'LBRACE    '|{|) (token 'IT))]
+                [#\{        (token 'LBRACE    '|{|)]
+                [#\}        (token 'RBRACE    '|}|)]
+                [#\(        (token 'LPAREN    '|(|)]
+                [#\)        (token 'RPAREN    '|)|)]
+                [#\[        (token 'LBRACKET  '|[|)]
+                [#\]        (token 'RBRACKET  '|]|)]
+                [#\?        (token 'QUESTION  '|?|)]
+                [#\$        (token 'DOLLAR    '|$|)]
+                [#\,        (token 'COMMA     '|,|)]
+                [#\.        (token 'DOT       '|.|)]
+                [#\:        (token 'COLON     '|:|)]
+                [#\/        (token 'SLASH     '|/|)]
+                [#\+        (token 'PLUS      '|+|)]
+                [dashes     (token 'DASH       (string->symbol lexeme))]
                 [symbols    (token 'OP         (string->symbol lexeme))]
                 [identifier (token 'IDENTIFIER (string->symbol lexeme))]
                 [integer    (token 'INTEGER    (string->number lexeme))]
                 [decimal    (token 'DECIMAL    (string->number lexeme))]
-                [prime      (token 'PRIME      (string->symbol lexeme))]
-                [#\'        (if (is-after '(ID IDENTIFIER DOLLAR PLUS DASH SLASH QUESTION))
-                                (token 'PRIME  #\')
+                [primes     (if (is-after '(ID IDENTIFIER DOLLAR PLUS DASH SLASH QUESTION))
+                                (token 'PRIME  (string->symbol lexeme))
                                 (mode!-quote 'SQUOTE #\' stringer))]
                 [#\"        (mode!-quote 'DQUOTE #\" stringer-I)]
                 [#\`        (mode! grave-span        (token 'GRAVE))]
                 [tickspace  (mode! grave-line        (token 'GRAVE))]
                 [tickdent   (mode! grave-block (cons (token 'GRAVE)
                                                      (indent/dedent/newline (substring lexeme 1))))]
-                [dentspace  (unless-eof (stock 'WANT-TABS #\space end-pos -1))]
+                [dentspace  (unless-eof (stoke 'WANT-TABS #\space end-pos -1))]
                 [spacetabs  (unless-eof (token 'SPACE))]
                 [int-qty    (qty 'INTEGER)]
                 [dec-qty    (qty 'DECIMAL)]))
@@ -221,7 +221,7 @@
   (mode! (pop! _indents))
   (token 'DEDENT))
 
-(define-macro (stock TYPE VALUE ANCHOR OFFSET)
+(define-macro (stoke TYPE VALUE ANCHOR OFFSET)
   #'(srcloc-token (token TYPE VALUE)
                   (srcloc (srcloc-source lexeme-srcloc)
                           (position-line ANCHOR)
@@ -236,7 +236,7 @@
                                   (append-if eof? (void)))]
                 [(endline endcol endpos) (port-next-location input-port)])
 
-    (define (stock token line col pos length)
+    (define (stoke token line col pos length)
       (srcloc-token token (srcloc (object-name input-port) line col pos length)))
 
     (define (to-srcloc-token t)
@@ -244,8 +244,8 @@
             [(token-struct? t) (if (equal? 'INDENT (token-struct-type t))
                                    (let* ([col (* 8 (token-struct-val t))]
                                           [pos (- endpos (/ (- endcol col) 8))])
-                                     (stock (token 'INDENT #\tab) endline col pos 1))
-                                   (stock t line col pos (- endpos pos)))]))
+                                     (stoke (token 'INDENT #\tab) endline col pos 1))
+                                   (stoke t line col pos (- endpos pos)))]))
     (if (empty? tokens)
         (produce-tokens input-port)
         (map to-srcloc-token tokens))))
