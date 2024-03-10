@@ -3,7 +3,6 @@
 
 (define-lex-abbrevs
   (dashes     (:+ #\-))
-  (primes     (:+ #\'))
   (alphas     (:+ (:/ #\a #\z #\A #\Z)))
   (alnums?    (:* (:/ #\a #\z #\A #\Z #\0 #\9)))
   (alnums     (:+ (:/ #\a #\z #\A #\Z #\0 #\9)))
@@ -16,11 +15,11 @@
   (dentspace  (:seq dent #\space))
   (tickspace  (:seq #\` spacetabs))
   (tickdent   (:seq #\` dent))
-  (identifier (:seq alphas alnums? (:* (:seq (char-set "+/-") alnums))))
   (integer    (:seq digits (:* (:seq #\_ digits))))
   (decimal    (:seq integer #\. integer))
-  (int-qty    (:seq integer alphas))
-  (dec-qty    (:seq decimal alphas)))
+  (int-unit   (:seq integer alphas))
+  (dec-unit   (:seq decimal alphas))
+  (identifier (:seq alphas alnums? (:* (:seq (char-set "+/-") alnums)))))
 
 (define-macro-cases indent/dedent/newline
   [(indent/dedent/newline)                       #'(indent/dedent/newline lexeme on-indent: _lexer)]
@@ -33,10 +32,10 @@
              [new-dent (string-length (last lines))]
              [old-dent (length _indents)])
         (if (> new-dent old-dent)
-            (cons (token 'NEWLINE newlines)
+            (cons (token 'NEWLINE (make-string newlines #\newline))
                   (for/list ([_ (range old-dent new-dent)]) (push-indent! NEXT-LEXER)))
             (append (for/list ([_ (range old-dent new-dent -1)]) (pop-indent!))
-                    (list (token 'NEWLINE newlines))))))])
+                    (list (token 'NEWLINE (make-string newlines #\newline)))))))])
 
 (define (handle-eof)
   (for/list ([_ (range (length _indents))]) (pop-indent!)))
@@ -54,37 +53,37 @@
 
 (define-macro (main-lexer RULES ...)
   #'(base-lexer RULES ...
-                ["{," (list (token 'LBRACE    '|{|) (token 'IT))]
+                ["{," (list (token 'LBRACE    '|{|) (token 'MONO))]
                 [#\{        (token 'LBRACE    '|{|)]
                 [#\}        (token 'RBRACE    '|}|)]
                 [#\(        (token 'LPAREN    '|(|)]
                 [#\)        (token 'RPAREN    '|)|)]
                 [#\[        (token 'LBRACKET  '|[|)]
                 [#\]        (token 'RBRACKET  '|]|)]
-                [#\?        (token 'QUESTION  '|?|)]
                 [#\$        (token 'DOLLAR    '|$|)]
+                [#\?        (token 'QMARK     '|?|)]
                 [#\,        (token 'COMMA     '|,|)]
                 [#\.        (token 'DOT       '|.|)]
                 [#\:        (token 'COLON     '|:|)]
-                [#\/        (token 'SLASH     '|/|)]
                 [#\+        (token 'PLUS      '|+|)]
+                [#\/        (token 'SLASH     '|/|)]
                 [dashes     (token 'DASH       (string->symbol lexeme))]
                 [symbols    (token 'OP         (string->symbol lexeme))]
                 [identifier (token 'IDENTIFIER (string->symbol lexeme))]
                 [integer    (token 'INTEGER    (string->number lexeme))]
                 [decimal    (token 'DECIMAL    (string->number lexeme))]
-                [primes     (if (is-after '(ID IDENTIFIER DOLLAR PLUS DASH SLASH QUESTION))
-                                (token 'PRIME  (string->symbol lexeme))
+                [#\'        (if (is-after '(PRIME IDENTIFIER DOLLAR DASH SLASH PLUS OP QMARK))
+                                (token 'PRIME lexeme)
                                 (mode!-quote 'SQUOTE #\' stringer))]
                 [#\"        (mode!-quote 'DQUOTE #\" stringer-I)]
-                [#\`        (mode! grave-span        (token 'GRAVE))]
-                [tickspace  (mode! grave-line        (token 'GRAVE))]
-                [tickdent   (mode! grave-block (cons (token 'GRAVE)
-                                                     (indent/dedent/newline (substring lexeme 1))))]
+                [#\`        (mode! (grave-span)        (token 'GRAVE))]
+                [tickspace  (mode! (grave-line)        (token 'GRAVE))]
+                [tickdent   (mode! (grave-block) (cons (token 'GRAVE)
+                                                       (indent/dedent/newline (substring lexeme 1))))]
                 [dentspace  (unless-eof (stoke 'WANT-TABS #\space end-pos -1))]
-                [spacetabs  (unless-eof (token 'SPACE))]
-                [int-qty    (qty 'INTEGER)]
-                [dec-qty    (qty 'DECIMAL)]))
+                [spacetabs  (unless-eof (token 'SPACE lexeme))]
+                [int-unit   (unit 'INTEGER)]
+                [dec-unit   (unit 'DECIMAL)]))
 
 (define (interper)
   (let ([prev-lexer _lexer]
@@ -158,12 +157,12 @@
 (define-macro (mode!-quote XQUOTE CHAR LEXER)
   #'(let ([prev-lexer _lexer])
       (mode! (LEXER (CHAR)
-                    [CHAR (mode! prev-lexer (token 'UNQUOTE))]
+                    [CHAR (mode! prev-lexer (token 'UNQUOTE lexeme))]
                     [dent (if (is-after XQUOTE)
                               (mode! (mode!-unquote XQUOTE prev-lexer)
                                      (indent/dedent/newline on-indent:(LEXER ())))
                               (indent/dedent/newline))]))
-      (token XQUOTE)))
+      (token XQUOTE lexeme)))
 
 (define (mode!-unquote xquote lexer)
   (lambda (input-port)
@@ -179,11 +178,11 @@
 (define-macro (update! COUNTER FN)
   #'(set! COUNTER (FN COUNTER)))
 
-(define-macro (qty SYMBOL)
-  #'(let* ([numpart (list->string (takef (string->list lexeme) char-numeric?))]
-           [idpart (substring lexeme (string-length numpart))])
-      (list (token SYMBOL (string->number numpart))
-            (token 'IDENTIFIER (string->symbol idpart)))))
+(define-macro (unit SYMBOL)
+  #'(let* ([num-part (list->string (dropf-right (string->list lexeme) char-alphabetic?))]
+           [id-part (substring lexeme (string-length num-part))])
+      (list (token SYMBOL (string->number num-part))
+            (token 'IDENTIFIER (string->symbol id-part)))))
 
 (define (debug msg x)
   (display msg)
@@ -219,7 +218,7 @@
 
 (define (pop-indent!)
   (mode! (pop! _indents))
-  (token 'DEDENT))
+  (token 'DEDENT (list #\newline #\backspace)))
 
 (define-macro (stoke TYPE VALUE ANCHOR OFFSET)
   #'(srcloc-token (token TYPE VALUE)
