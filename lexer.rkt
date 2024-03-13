@@ -17,9 +17,14 @@
   (tickdent   (:seq #\` dent))
   (integer    (:seq digits (:* (:seq #\_ digits))))
   (decimal    (:seq integer #\. integer))
-  (int-unit   (:seq integer alphas))
-  (dec-unit   (:seq decimal alphas))
+  (int-meter  (:seq integer alphas))
+  (dec-meter  (:seq decimal alphas))
   (identifier (:seq alphas alnums? (:* (:seq (char-set "+/-") alnums)))))
+
+(define-macro (base-lexer RULES ...)
+  #'(lexer [dent  (indent/dedent/newline)]
+  		   [(eof) (handle-eof)]
+           RULES ...))
 
 (define-macro-cases indent/dedent/newline
   [(indent/dedent/newline)                       #'(indent/dedent/newline lexeme on-indent: _lexer)]
@@ -35,7 +40,7 @@
             (cons (token 'NEWLINE (make-string newlines #\newline))
                   (for/list ([_ (range old-dent new-dent)]) (push-indent! NEXT-LEXER)))
             (append (for/list ([_ (range old-dent new-dent -1)]) (pop-indent!))
-                    (list (token 'NEWLINE (make-string newlines #\newline)))))))])
+                    (make-list newlines (token 'NEWLINE "\n"))))))])
 
 (define (handle-eof)
   (for/list ([_ (range (length _indents))]) (pop-indent!)))
@@ -45,45 +50,40 @@
         (handle-eof)
         (begin ACTIONS ...)))
 
-(define-macro (base-lexer RULES ...)
-  #'(lexer RULES ...
-           [dent     (indent/dedent/newline)]
-           [(eof)    (handle-eof)]
-           [any-char (token 'UNKNOWN-TOKEN lexeme)]))
-
 (define-macro (main-lexer RULES ...)
   #'(base-lexer RULES ...
-                ["{," (list (token 'LBRACE    '|{|) (token 'MONO))]
-                [#\{        (token 'LBRACE    '|{|)]
-                [#\}        (token 'RBRACE    '|}|)]
-                [#\(        (token 'LPAREN    '|(|)]
-                [#\)        (token 'RPAREN    '|)|)]
-                [#\[        (token 'LBRACKET  '|[|)]
-                [#\]        (token 'RBRACKET  '|]|)]
-                [#\$        (token 'DOLLAR    '|$|)]
-                [#\?        (token 'QMARK     '|?|)]
-                [#\,        (token 'COMMA     '|,|)]
-                [#\.        (token 'DOT       '|.|)]
-                [#\:        (token 'COLON     '|:|)]
-                [#\+        (token 'PLUS      '|+|)]
-                [#\/        (token 'SLASH     '|/|)]
+                ["{," (list (token 'LBRACE   "{") (token 'IT))]
+                [#\{        (token 'LBRACE   "{")]
+                [#\}        (token 'RBRACE   "}")]
+                [#\(        (token 'LPAREN   "(")]
+                [#\)        (token 'RPAREN   ")")]
+                [#\[        (token 'LBRACKET "[")]
+                [#\]        (token 'RBRACKET "]")]
+                [#\,        (token 'COMMA    ",")]
+                [#\.        (token 'DOT      ".")]
+                [#\:        (token 'COLON    ':)]
+                [#\$        (token 'DOLLAR   '$)]
+                [#\?        (token 'QUESTION '?)]
+                [#\+        (token 'PLUS     '+)]
+                [#\/        (token 'SLASH    '/)]
                 [dashes     (token 'DASH       (string->symbol lexeme))]
                 [symbols    (token 'OP         (string->symbol lexeme))]
                 [identifier (token 'IDENTIFIER (string->symbol lexeme))]
                 [integer    (token 'INTEGER    (string->number lexeme))]
                 [decimal    (token 'DECIMAL    (string->number lexeme))]
-                [#\'        (if (is-after '(PRIME IDENTIFIER DOLLAR DASH SLASH PLUS OP QMARK))
+                [int-meter  (meter 'INTEGER)]
+                [dec-meter  (meter 'DECIMAL)]
+                [#\'        (if (is-after '(PRIME IDENTIFIER DOLLAR DASH SLASH PLUS OP QUESTION))
                                 (token 'PRIME lexeme)
-                                (mode!-quote 'SQUOTE #\' stringer))]
-                [#\"        (mode!-quote 'DQUOTE #\" stringer-I)]
+                                (mode!-quote #\' stringer))]
+                [#\"        (mode!-quote #\" stringer-I)]
                 [#\`        (mode! (grave-span)        (token 'GRAVE))]
                 [tickspace  (mode! (grave-line)        (token 'GRAVE))]
                 [tickdent   (mode! (grave-block) (cons (token 'GRAVE)
                                                        (indent/dedent/newline (substring lexeme 1))))]
                 [dentspace  (unless-eof (stoke 'WANT-TABS #\space end-pos -1))]
                 [spacetabs  (unless-eof (token 'SPACE lexeme))]
-                [int-unit   (unit 'INTEGER)]
-                [dec-unit   (unit 'DECIMAL)]))
+                [any-char   (token 'UNKNOWN-TOKEN lexeme)]))
 
 (define (interper)
   (let ([prev-lexer _lexer]
@@ -104,16 +104,16 @@
   #'(stringer (SPECIAL-CHARS ... #\`)
               RULES ...
               ["`{" (mode! (interper)
-                           (list (token 'INTERP 0)
+                           (list (token 'INTERP)
                                  (token 'LBRACE #\{)))]))
 
 (define-macro (stringer-II (SPECIAL-CHARS ...) RULES ...)
   #'(let ([start-level (length _indents)])
-      (stringer-I (SPECIAL-CHARS ...)
+      (stringer-I (SPECIAL-CHARS ... #\space #\tab)
                   RULES ...
                   [(:seq spacetabs #\` dent)
                    (append (list (token 'STRING (car (string-split lexeme "`" #:trim? #f)))
-                                 (token 'INTERP (- (length _indents) start-level)))
+                                 (token 'INTERP))
                            (indent/dedent/newline on-indent:(interper)))])))
 
 (define (grave-block) (stringer-II ()))
@@ -129,40 +129,41 @@
         [braces 0]
         [brackets 0])
 
-    (define-macro (up COUNTER SYMBOL)
+    (define-macro (up COUNTER SYMBOL VALUE)
       #'(begin (update! COUNTER add1)
-               (token SYMBOL)))
+               (token SYMBOL VALUE)))
 
-    (define-macro (down COUNTER SYMBOL)
+    (define-macro (down COUNTER SYMBOL VALUE)
       #'(begin (if (> COUNTER 0)
                    (update! COUNTER sub1)
                    (mode! prev-lexer))
-               (token SYMBOL)))
+               (token SYMBOL VALUE)))
 
-    (define-macro (exit? SYMBOL)
+    (define-macro (exit? SYMBOL VALUE)
       #'(if (> (+ parens braces brackets) 0)
             (token 'STRING lexeme)
-            (mode! prev-lexer (token SYMBOL))))
+            (mode! prev-lexer (token SYMBOL VALUE))))
 
-    (stringer-II (#\( #\) #\{ #\} #\[ #\] #\space #\,)
-                 [#\( (up parens 'LPAREN)]
-                 [#\{ (up braces 'LBRACE)]
-                 [#\[ (up brackets 'LBRACKET)]
-                 [#\) (down parens 'RPAREN)]
-                 [#\} (down braces 'RBRACE)]
-                 [#\] (down brackets 'RBRACKET)]
-                 [#\space (exit? 'SPACE)]
-                 [#\,     (exit? 'COMMA)])))
+    (stringer-II (#\( #\) #\{ #\} #\[ #\] #\,)
+                 [#\( (up   parens   'LPAREN   "(")]
+                 [#\{ (up   braces   'LBRACE   "{")]
+                 [#\[ (up   brackets 'LBRACKET "[")]
+                 [#\) (down parens   'RPAREN   ")")]
+                 [#\} (down braces   'RBRACE   "}")]
+                 [#\] (down brackets 'RBRACKET "]")]
+                 [#\,       (exit?   'COMMA    ",")]
+                 [spacetabs (exit?   'SPACE lexeme)]
+                 [dent (mode! prev-lexer (indent/dedent/newline))])))
 
-(define-macro (mode!-quote XQUOTE CHAR LEXER)
+(define-macro (mode!-quote CHAR LEXER)
   #'(let ([prev-lexer _lexer])
       (mode! (LEXER (CHAR)
                     [CHAR (mode! prev-lexer (token 'UNQUOTE lexeme))]
-                    [dent (if (is-after XQUOTE)
-                              (mode! (mode!-unquote XQUOTE prev-lexer)
+                    [dent (if (is-after 'QUOTE)
+                              (mode! (mode!-unquote 'QUOTE prev-lexer)
                                      (indent/dedent/newline on-indent:(LEXER ())))
                               (indent/dedent/newline))]))
-      (token XQUOTE lexeme)))
+      (token 'QUOTE lexeme)))
 
 (define (mode!-unquote xquote lexer)
   (lambda (input-port)
@@ -178,7 +179,7 @@
 (define-macro (update! COUNTER FN)
   #'(set! COUNTER (FN COUNTER)))
 
-(define-macro (unit SYMBOL)
+(define-macro (meter SYMBOL)
   #'(let* ([num-part (list->string (dropf-right (string->list lexeme) char-alphabetic?))]
            [id-part (substring lexeme (string-length num-part))])
       (list (token SYMBOL (string->number num-part))

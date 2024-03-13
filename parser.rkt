@@ -1,6 +1,6 @@
 #lang brag
 
-expres : /NEWLINE? expr3
+expres : newline? expr3
 @expr3 : apply3
        | exprB
 @exprB : break|breakO|break1|breakL|break2
@@ -14,13 +14,12 @@ expres : /NEWLINE? expr3
 @exprI : commaO|comma1
        | expr1
 @expr1 : apply1
-       | exprQ
-@exprQ : quanta
        | exprO
-@exprO : mono
+@exprO : prop
        | expr0
 @expr0 : apply0
        | dot
+       | it
        | e
 radL   :                                        rad kwargs
        |                        exprJ  /SPACE   rad kwargs?
@@ -28,22 +27,21 @@ radL   :                                        rad kwargs
 rad2   :  (@break|breakO|break1)       /SPACE   rad kwargs? (/SPACE (kvL|exprL))?
        | ((@break|breakO|break1|exprJ) /SPACE)? rad kwargs? (/SPACE (kv2|apply2|comma2|rad2)|dent)
 
-comma  : exprI /SPACE? /COMMA
-break  : exprB /NEWLINE /COMMA                              | (break1|breakO) /SPACE? /COMMA
-break1 : (@break|breakO) kwargs? /SPACE (kv|expr1)          | (break1|breakO) /SPACE /COMMA (kv|expr0)
+commaO :  @comma        (dot|op) (dot|op|string|group)*
+breakO :  @break        (dot|op) (dot|op|string|group)*
 comma1 : (@comma|commaO) kwargs? /SPACE (kv|expr1)          |           exprI /SPACE /COMMA (kv|expr0)
+break1 : (@break|breakO) kwargs? /SPACE (kv|expr1)          | (break1|breakO) /SPACE /COMMA (kv|expr0)
 commaL : (@comma|commaO) kwargs? /SPACE (kvL|applyL)        |           exprI /SPACE /COMMA  kvL
-breakL : (@break|breakO) kwargs? /SPACE (kvL|applyL)        | (break1|breakO) /SPACE /COMMA  kvL | exprB /NEWLINE kvL
-break2 : (@break|breakO) kwargs? (/SPACE (kv2|apply2)|dent) | (break1|breakO) /SPACE /COMMA  kv2 | exprB /NEWLINE kv2
+breakL : (@break|breakO) kwargs? /SPACE (kvL|applyL)        | (break1|breakO) /SPACE /COMMA  kvL | exprB newline kvL
 comma2 : (@comma|commaO) kwargs? (/SPACE (kv2|apply2)|dent) |           exprI /SPACE /COMMA  kv2
-commaO :  @comma (dot|op) (dot|op|string|group)*
-breakO :  @break (dot|op) (dot|op|string|group)*
-apply3 : (exprB|rad) /NEWLINE expr3
-apply2 :  exprQ kwargs? (/SPACE (kv2|apply2)|dent)
-applyL :  exprQ kwargs? /SPACE (kvL|applyL)
-apply1 :  exprQ kwargs? /SPACE (kv|expr1)
-apply0 :  expr0 (string|group)+
-       |  exprO (dot|op)+
+break2 : (@break|breakO) kwargs? (/SPACE (kv2|apply2)|dent) | (break1|breakO) /SPACE /COMMA  kv2 | exprB newline kv2
+comma  :  exprI /SPACE? /COMMA
+break  :  exprB newline /COMMA                              | (break1|breakO) /SPACE? /COMMA
+apply3 : (exprB|rad) newline expr3
+apply2 :  exprO kwargs? (/SPACE (kv2|apply2)|dent)
+applyL :  exprO kwargs? /SPACE (kvL|applyL)
+apply1 :  exprO kwargs? /SPACE (kv|expr1)
+apply0 :  expr0 (dot|op|string|group)+
        |  ion (op|e)
        |  op e
 @e     :  slot
@@ -59,39 +57,42 @@ op     : (DOLLAR|DASH|SLASH|PLUS|OP|QUESTION) PRIME*
        |  DOT DOT
 dot    : /DOT SLASH? id
        | /DOT /LPAREN @op /RPAREN
-quanta : @dot /COLON exprQ
-kv     : @key /COLON exprQ
+prop   : @dot /COLON exprO
+kv     : @key /COLON exprO
 kvL    : @key /COLON /SPACE exprL
 kv2    : @key /COLON (/SPACE (apply2|comma2|rad2)|dent)?
 ion    :      /COLON
 rad    : @op | COLON
 key    : @op | @id
-mono   : /MONO
-
-string : /SQUOTE STRING? /UNQUOTE
-       | /DQUOTE (si|sz)* /UNQUOTE
-       | /DQUOTE @sb /NEWLINE /UNQUOTE
-sb     : @indent (STRING|interp|NEWLINE|sb)* /DEDENT
-interp : /INTERP (@braces|dent)
-@s1    :          STRING*
-@s2    : @indent  STRING*          /DEDENT
-@si    :          (STRING|interp)*
-@sz    : @indent  (STRING|interp)* /DEDENT
-@se    : /NEWLINE (STRING|interp)*
+it     : /IT
+string : /QUOTE str* /UNQUOTE
+       | /GRAVE str+
+       | /QUOTE blockquo /NEWLINE NEWLINE* /UNQUOTE
+       | /GRAVE blockquo /NEWLINE NEWLINE*
+@str   : STRING|blockquo|NEWLINE
+       | @inter|interp|interpd
+       | LPAREN str RPAREN
+       | LBRACE str RBRACE
+       | LBRACKET str RBRACKET
 
 @group   : brackets|braces|parens
 brackets : /LBRACKET array? /RBRACKET
 braces   : /LBRACE subexpr /RBRACE
 parens   : /LPAREN (subexpr|op) /RPAREN
 slot     : /LPAREN @dot /COLON /RPAREN
+inter    : /INTERP /LBRACE newline /RBRACE
+interp   : /INTERP /LBRACE subexpr /RBRACE
+interpd  : /INTERP dent
 @kwargs  : (/SPACE kv)+
-@subexpr : (/SPACE? apply2|dent) /NEWLINE
+@subexpr : (/SPACE? apply2|dent) newline
          |  /SPACE? exprL /SPACE?
-@array   :  /SPACE  exprL                     (/NEWLINE /COMMA  /SPACE exprL)* /SPACE
-         |          exprQ (/SPACE expr0)*     (/NEWLINE  expr0 (/SPACE expr0)*)*
-         | @indent /COMMA (/SPACE exprL|dent) (/NEWLINE /COMMA (/SPACE exprL|dent))* /DEDENT /NEWLINE
-@dent    : @indent @expres /DEDENT
-@indent  : /NEWLINE /INDENT
+@array   :  /SPACE  exprL                     (newline /COMMA  /SPACE exprL)* /SPACE
+         |          expr0 (/SPACE expr0)*     (newline  expr0 (/SPACE expr0)*)*
+         |  indent /COMMA (/SPACE exprL|dent) (newline /COMMA (/SPACE exprL|dent))* /DEDENT newline
+@dent    :  indent @expres /DEDENT
+blockquo :  indent str+ /DEDENT
+@indent  :  newline /INDENT
+@newline : /NEWLINE+
 
-error : UNKNOWN-TOKEN
-      | WANT-TABS
+error : /UNKNOWN-TOKEN
+      | /WANT-TABS
